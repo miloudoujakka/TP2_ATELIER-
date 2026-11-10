@@ -191,36 +191,39 @@ def ecrire_rapport(rapport: dict, chemin: Path) -> None:
 
 # --- Étape 8 (à la maison) : le journal des événements (expressions régulières) ------------------
 MOTIF_EVENEMENT = re.compile(
-    r"(?P<date>\d{4}-\d{2}-\d{2}) (?P<heure>\d{2}:\d{2}:\d{2}) "
-    r"\[(?P<machine>M-\d{2})\] "
-    r"(?P<type>[A-Z]+) "
-    r"code=(?P<code>[A-Z]\d{2})"
-    r"(?: duree=(?P<duree>\d+))?"
+    r"(?P<date>\d{4}-\d{2}-\d{2}) "    # date      : 2026-10-12
+    r"(?P<heure>\d{2}:\d{2}:\d{2}) "   # heure     : 08:15:02
+    r"\[(?P<machine>M-\d{2})\] "       # machine   : [M-03]
+    r"(?P<type>[A-Z]+) "               # type      : ARRET
+    r"code=(?P<code>[A-Z]\d{2})"       # code      : code=E42
+    r"(?: duree=(?P<duree>\d+))?"      # durée     : duree=12 (facultative)
 )
 
 
+# ---------- 2. Lire le journal : garder les bonnes lignes ----------
 def lire_evenements(chemin: Path):
-    """Générateur : un dictionnaire par ligne valide du journal, les lignes mal formées sont sautées.
-
-    Clés : machine, type, code, heure, duree (entier en minutes, ou None si absente).
-    """
     with open(chemin, encoding="utf-8") as f:
         for ligne in f:
             m = MOTIF_EVENEMENT.fullmatch(ligne.strip())
-            if m is None:
+            if m is None:                 # ligne abîmée : on la saute
                 continue
-            duree = m.group("duree")
+
+            if m.group("duree") is None:  # pas de durée dans la ligne
+                duree = None
+            else:
+                duree = int(m.group("duree"))
+
             yield {
                 "machine": m.group("machine"),
                 "type": m.group("type"),
                 "code": m.group("code"),
                 "heure": m.group("heure"),
-                "duree": int(duree) if duree is not None else None,
+                "duree": duree,
             }
 
 
+# ---------- 3. Additionner les minutes d'arrêt par machine ----------
 def temps_arret(evenements) -> dict[str, int]:
-    """Durée totale des ARRET par machine, en minutes."""
     total = {}
     for e in evenements:
         if e["type"] == "ARRET" and e["duree"] is not None:
